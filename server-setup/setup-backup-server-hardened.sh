@@ -63,7 +63,7 @@ if [[ -x "${INSTALL_DIR}/rest-server" ]] && systemctl list-unit-files | grep -q 
     warn "检测到 ${SVC_NAME} 已经安装过。"
     echo "  [1] 仅新增一个备份凭据（给新的备份来源机器用，复用现有服务） (默认)"
     echo "  [2] 完全重新安装（会停止现有服务，覆盖证书与配置）"
-    read -rp "请选择 [1]: " REINSTALL_CHOICE
+    read -rp "请选择 [1]: " REINSTALL_CHOICE < /dev/tty
     REINSTALL_CHOICE="${REINSTALL_CHOICE:-1}"
     if [[ "$REINSTALL_CHOICE" == "2" ]]; then
         info "停止并清理现有安装 ..."
@@ -82,7 +82,7 @@ fi
 
 if [[ $FIRST_INSTALL -eq 1 ]]; then
     DEFAULT_PORT=9199
-    read -rp "监听端口（直接回车用默认 [${DEFAULT_PORT}]): " LISTEN_PORT
+    read -rp "监听端口（直接回车用默认 [${DEFAULT_PORT}]): " LISTEN_PORT < /dev/tty
     LISTEN_PORT="${LISTEN_PORT:-$DEFAULT_PORT}"
     if ss -tln 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${LISTEN_PORT}\$"; then
         die "端口 ${LISTEN_PORT} 已被占用，请重新运行并选择其他端口"
@@ -142,14 +142,14 @@ if [[ $FIRST_INSTALL -eq 1 ]]; then
     echo "  [1] Let's Encrypt 域名证书（需要一个已解析到本机的域名，走 acme.sh webroot 模式）"
     echo "  [2] 自签证书（默认，无需域名，客户端用 --cacert 直接信任这一张证书） (默认)"
     echo "  [3] 自定义证书路径（复用已有证书文件）"
-    read -rp "请选择 [2]: " CERT_CHOICE
+    read -rp "请选择 [2]: " CERT_CHOICE < /dev/tty
     CERT_CHOICE="${CERT_CHOICE:-2}"
 
     case "$CERT_CHOICE" in
     1)
-        read -rp "域名: " CERT_DOMAIN
+        read -rp "域名: " CERT_DOMAIN < /dev/tty
         [[ -n "$CERT_DOMAIN" ]] || die "域名不能为空"
-        read -rp "nginx webroot 路径（用于 acme.sh 验证，直接回车用默认 [/var/www/html]): " WEBROOT
+        read -rp "nginx webroot 路径（用于 acme.sh 验证，直接回车用默认 [/var/www/html]): " WEBROOT < /dev/tty
         WEBROOT="${WEBROOT:-/var/www/html}"
         [[ -d "$WEBROOT" ]] || die "webroot 路径不存在: $WEBROOT"
 
@@ -167,18 +167,18 @@ if [[ $FIRST_INSTALL -eq 1 ]]; then
         REST_HOST="$CERT_DOMAIN"
         ;;
     3)
-        read -rp "证书文件路径 (fullchain/cert pem): " CUSTOM_CERT
-        read -rp "私钥文件路径 (key pem): " CUSTOM_KEY
+        read -rp "证书文件路径 (fullchain/cert pem): " CUSTOM_CERT < /dev/tty
+        read -rp "私钥文件路径 (key pem): " CUSTOM_KEY < /dev/tty
         [[ -f "$CUSTOM_CERT" ]] || die "证书文件不存在: $CUSTOM_CERT"
         [[ -f "$CUSTOM_KEY" ]]  || die "私钥文件不存在: $CUSTOM_KEY"
         cp "$CUSTOM_CERT" "$TLS_CERT"
         cp "$CUSTOM_KEY" "$TLS_KEY"
         ok "已复制自定义证书"
-        read -rp "对外连接用的主机名/IP（直接回车用默认 [${PUBLIC_IP}]): " REST_HOST
+        read -rp "对外连接用的主机名/IP（直接回车用默认 [${PUBLIC_IP}]): " REST_HOST < /dev/tty
         REST_HOST="${REST_HOST:-$PUBLIC_IP}"
         ;;
     *)
-        read -rp "证书 SAN 用的公网 IP/域名（直接回车用探测到的 [${PUBLIC_IP}]): " REST_HOST
+        read -rp "证书 SAN 用的公网 IP/域名（直接回车用探测到的 [${PUBLIC_IP}]): " REST_HOST < /dev/tty
         REST_HOST="${REST_HOST:-$PUBLIC_IP}"
         [[ -n "$REST_HOST" ]] || die "无法确定主机地址，请手动输入"
         info "生成自签证书 (SAN=${REST_HOST}, 有效期 3650 天) ..."
@@ -195,14 +195,14 @@ if [[ $FIRST_INSTALL -eq 1 ]]; then
 else
     # 复用现有安装时，仍需要知道主机地址用于打印凭据
     PUBLIC_IP="$(curl -fsSL -4 https://ifconfig.me 2>/dev/null || curl -fsSL -4 https://icanhazip.com 2>/dev/null || echo "")"
-    read -rp "对外连接用的主机名/IP（直接回车用探测到的 [${PUBLIC_IP}]): " REST_HOST
+    read -rp "对外连接用的主机名/IP（直接回车用探测到的 [${PUBLIC_IP}]): " REST_HOST < /dev/tty
     REST_HOST="${REST_HOST:-$PUBLIC_IP}"
 fi
 
 # ========================= htpasswd 凭据 =========================
 HTPASSWD_FILE="${INSTALL_DIR}/data/.htpasswd"
 DEFAULT_USER="client-$(openssl rand -hex 3)"
-read -rp "新增备份来源用户名（直接回车用随机生成 [${DEFAULT_USER}]): " REPO_USER
+read -rp "新增备份来源用户名（直接回车用随机生成 [${DEFAULT_USER}]): " REPO_USER < /dev/tty
 REPO_USER="${REPO_USER:-$DEFAULT_USER}"
 REPO_PASS="$(openssl rand -base64 24 | tr -d '=+/' | head -c 24)"
 
