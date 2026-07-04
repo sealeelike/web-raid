@@ -22,10 +22,12 @@ path 管理:
   path list                列出所有已配置的备份源目录
 
 执行:
-  run [--target <name>] [--force]
+  run [--target <name>] [--force] [--path <目录>]
                            对指定或全部已启用 target 跑一次备份，成功后自动清理旧快照
                            （--force 供事件触发器/定时器等自动化调用时跳过去抖判断用，
-                           手动执行不需要加）
+                           手动执行不需要加；--path 只备份 paths.conf 里的这一个目录，
+                           不加则备份全部——不同目录的保留策略天然独立，互不影响）
+                           退出码：0=成功，1=备份/清理失败，75=锁被占用本次跳过（可重试）
 
 服务管理（zero 手动改配置：systemd unit 里的绝对路径由本命令自动填入）:
   service install          安装并启用 systemd/ 目录下的所有 unit（写入 ~/.config/systemd/user/）
@@ -173,8 +175,10 @@ cmd_path_list() {
 # ===========================================================================
 
 # 单个 target 的备份 + 清理，返回非 0 表示这个 target 失败（不中断其他 target）
+# only_path 非空时只备份这一个目录（不读整个 paths.conf）——配合 restic forget 默认按
+# host,paths 分组保留策略的行为，每个目录的保留策略天然互不影响，不需要"大家凑在一起才备份"
 run_one_target() {
-    local name="$1" restic_bin="$2"
+    local name="$1" restic_bin="$2" only_path="${3:-}"
     load_target "$name"
     if [[ "$ENABLED" != "true" ]]; then
         info "target '${name}' 已禁用，跳过"
@@ -183,9 +187,13 @@ run_one_target() {
     export_restic_env
 
     local paths=()
-    while IFS= read -r p; do
-        [[ -n "$p" ]] && paths+=("$p")
-    done < "$PATHS_CONF"
+    if [[ -n "$only_path" ]]; then
+        paths=("$only_path")
+    else
+        while IFS= read -r p; do
+            [[ -n "$p" ]] && paths+=("$p")
+        done < "$PATHS_CONF"
+    fi
 
     info "[${name}] 开始备份 ${#paths[@]} 个目录 ..."
     # 本命令已经用 flock 保证不会有第二个 backupctl run 并发执行，
@@ -216,12 +224,18 @@ run_one_target() {
     fi
 }
 
+# 锁被占用时的退出码：不用 0（那样调用方会以为"这次真的什么都不用做了"），
+# 也不用 1（那样看起来像备份失败），用一个专门的哨兵值让自动化调用方（watcher/ticker）
+# 能区分出"这次没跑成，稍后应该重试"，而不是把"跳过"误当成"成功"从而清空自己的去抖状态
+EX_LOCK_BUSY=75
+
 cmd_run() {
-    local only_target="" force=0
+    local only_target="" force=0 only_path=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --target) only_target="${2:-}"; [[ -n "$only_target" ]] || die "--target 需要指定 target 名称"; shift 2 ;;
             --force)  force=1; shift ;;
+            --path)   only_path="${2:-}"; [[ -n "$only_path" ]] || die "--path 需要指定目录"; shift 2 ;;
             *) die "未知参数: $1" ;;
         esac
     done
@@ -229,11 +243,16 @@ cmd_run() {
     # run 本身不做任何"要不要跑"的前置判断，调不调用这条命令由触发脚本自己决定
     : "$force"
 
+    if [[ -n "$only_path" ]]; then
+        only_path="$(realpath -m "$only_path")"
+        [[ -f "$PATHS_CONF" ]] && grep -qxF "$only_path" "$PATHS_CONF" || die "--path 指定的目录不在 paths.conf 里: ${only_path}"
+    fi
+
     local lockfile="${VAR_DIR}/backup.lock"
     exec 200>"$lockfile"
     if ! flock -n 200; then
         info "已有 backupctl run 正在执行，本次跳过"
-        return 0
+        return "$EX_LOCK_BUSY"
     fi
 
     local names
@@ -251,7 +270,7 @@ cmd_run() {
 
     local overall_failed=0
     while IFS= read -r name; do
-        run_one_target "$name" "$restic_bin" || overall_failed=1
+        run_one_target "$name" "$restic_bin" "$only_path" || overall_failed=1
     done <<< "$names"
 
     [[ $overall_failed -eq 0 ]] || return 1
