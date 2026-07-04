@@ -209,6 +209,13 @@ run_one_target() {
         ok "[${name}] 备份成功"
         log_line "run: ${name} 备份成功"
         date '+%Y-%m-%d %H:%M:%S' > "${VAR_DIR}/last-success.${name}"
+        # 不管这次是 watcher/ticker 触发的还是手动跑的，只要这个目录被成功备份了，
+        # 就清零它自己的累计开机 tick 计数——backup-ticker.sh 的兜底阈值只针对
+        # "确实一直没成功过"的目录，不应该在已经成功之后还继续计
+        local p
+        for p in "${paths[@]}"; do
+            echo 0 > "${VAR_DIR}/uptime-ticks.$(path_slug "$p")" 2>/dev/null || true
+        done
 
         info "[${name}] 清理旧快照 (keep-last ${KEEP_LAST:-1}) ..."
         if nice -n 19 ionice -c3 "$restic_bin" forget --keep-last "${KEEP_LAST:-1}" --prune; then

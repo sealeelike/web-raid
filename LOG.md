@@ -56,6 +56,22 @@
 - 端到端验证（真实测试 VPS + 两个独立测试目录）：只写目录 A 一次后让其静默，同时持续每 3 秒写目录 B 模拟"B 一直很忙"——确认 A 在自己的静默期满后独立触发、快照只含 A 的文件，全程没有等待 B；B 在持续写入期间没有被任何触发扫入；B 自己静默后独立触发、快照只含 B 的文件；`restic snapshots` 确认两个目录的 `host,paths` 保留分组互不干扰、各自正确保留最新一份
 - 详见更新后的 `doc/05-backup-watcher.md`
 
+## 2026-07-04 — Module 5 后续：service stop/start + 修复 watcher 退出码
+
+- 用户提问 4-5 模块常驻监控的系统开销，实测 `ps aux`：1 个监控目录时总计约 8MB RSS（主循环 + 单目录 worker + `inotifywait` 三个进程）、空闲时 0% CPU，确认设计的低开销声明不只是理论上成立
+- 新增 `backupctl service stop/start`：只暂停/恢复已安装的 unit，不删配置、不取消开机自启，方便用户不需要记 `systemctl` 语法就能临时暂停监控
+- 实测 `service stop` 时发现 bug：`backup-watcher.sh` 的 `trap cleanup EXIT TERM INT` 收到 `SIGTERM` 后没有显式 `exit 0`，导致进程以信号退出码 143 结束；`systemd` 在 unit 没声明 `SuccessExitStatus` 的情况下把这次正常停止误判成"失败"，`systemctl --user is-active` 停止后显示 `failed` 而不是 `inactive`（虽然没有触发意外的 `Restart=on-failure` 循环，因为 systemd 对用户主动发起的 stop 本来就会抑制自动重启，但状态显示具有误导性）。修复：拆分 trap，`TERM`/`INT` 单独处理为 `cleanup; exit 0`，重新验证 install→stop→start→uninstall 全流程，`is-active` 正确显示 `inactive`
+- 重写 `README.md` 操作说明：去掉不存在的 `backupctl status` 引用，补全 `target`/`path`/`run`/`service` 全部真实子命令，加了一段"路线图"说明当前是 CLI 阶段、后续会做 TUI/GUI
+
+## 2026-07-04 — Module 6: 累计开机兜底 backup-ticker
+
+- 新增 `bin/backup-ticker.sh`（systemd timer 驱动的 oneshot 脚本，每 15 分钟被唤醒一次）+ `systemd/backup-ticker.service`/`.timer`
+- 沿用模块 5 的独立性原则：每个目录一个独立的 `var/uptime-ticks.<slug>` 计数文件，只在这个目录自己被成功备份后清零（不管触发源是 watcher/ticker/手动 run），避免重新引入跨目录互相牵连的问题——这正是模块 5 完成时特意留下的提醒事项
+- `path_slug()` 挪进 `bin/lib.sh` 共享，保证 ticker 写 tick 文件名和 `backupctl` 清零 tick 文件名用的是同一套算法
+- `backupctl` 的 `run_one_target()` 成功分支新增清零逻辑；失败/锁冲突不清零、不放弃，保留 tick 数下一轮继续尝试
+- 端到端验证（真实测试 VPS，临时用 9198 端口起一个独立测试实例，验证完毕已在 VPS 上完全清理）：低阈值场景确认"未达标不触发/达标触发且产生真实快照/成功后清零"；持锁模拟场景确认"锁冲突时 tick 保留、不清零、不放弃"
+- 详见 `doc/06-backup-ticker.md`
+
 ## 下一步
 
-Module 6: 累计开机兜底 `backup-ticker.service`/`.timer`（15 分钟 tick，成功后清零，默认 6 小时强制阈值，复用已有的 `--force` 参数）——鉴于模块 5 的独立性原则，需要跟用户确认兜底状态是否也要按目录独立记录（而不是按 target 记录一个时间戳），避免重新引入跨目录互相牵连的问题
+Module 7: 通知策略（失败即时弹窗 + 成功每日汇总）——需要接入 watcher 和 ticker 两条触发路径共同的失败/成功记录点

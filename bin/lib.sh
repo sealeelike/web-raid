@@ -87,3 +87,9 @@ export_restic_env() {
 list_targets() {
     find "$TARGETS_DIR" -maxdepth 1 -name '*.env' -printf '%f\n' 2>/dev/null | sed 's/\.env$//' | sort
 }
+
+# 目录路径 -> 文件名安全的 slug，backup-ticker.sh 和 backupctl 共用，
+# 保证两边写/清零的是同一个 var/uptime-ticks.<slug> 文件
+path_slug() {
+    printf '%s' "$1" | sed 's/[^A-Za-z0-9]/_/g'
+}
