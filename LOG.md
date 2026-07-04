@@ -39,6 +39,14 @@
 - 端到端验证（针对真实测试 VPS）：正常备份→prune 循环确认 keep-last 生效；**关键场景**——用 80MB 测试文件制造几十秒的备份窗口，`kill -9` 整个 run 进程模拟断电中断，确认 `flock` 自动释放、远端确实留下 stale lock、重跑后 `restic unlock` 自动清理且备份/prune 正常完成，不需要人工介入；并发跳过逻辑（第二次 run 检测到锁占用后正确跳过）也一并验证
 - 详见 `doc/04-backupctl-run.md`
 
+## 2026-07-04 — Module 5: 事件触发 backup-watcher
+
+- 新增 `bin/backup-watcher.sh`：单次 `inotifywait -r --timeout` 循环（退出码 0=事件/2=超时，实测确认），去抖状态机（`dirty` + `last_event_epoch`），静默期默认 600 秒，触发失败不放弃、下轮自动重试
+- 新增 `systemd/backup-watcher.service`（`__BACKUP_HOME__` 占位符模板）+ `backupctl service install/status/uninstall`：通用批量安装逻辑，`sed` 替换占位符为真实路径写入 `~/.config/systemd/user/`，为模块 6 的 ticker unit 预留好同一套安装逻辑
+- 环境准备：本机 缺 `inotify-tools` 且无免密 sudo，用已配置好的图形化 askpass（`sudo -A apt-get install -y inotify-tools`）解决，不需要用户在对话里输入密码
+- 端到端验证：新建测试 target + 测试目录，短静默期（15s）模拟连续两次写入，确认去抖真正等满静默期才触发、`backupctl run --force` 被自动调用且成功产生新快照；`service install/status/uninstall` 全流程针对真实 systemd --user 验证通过
+- 详见 `doc/05-backup-watcher.md`
+
 ## 下一步
 
-Module 5: 事件触发 `backup-watcher.service`（inotifywait -r -m + 静默去抖，默认 10 分钟）
+Module 6: 累计开机兜底 `backup-ticker.service`/`.timer`（15 分钟 tick，成功后清零，默认 6 小时强制阈值，复用已有的 `--force` 参数）

@@ -27,6 +27,11 @@ path 管理:
                            （--force 供事件触发器/定时器等自动化调用时跳过去抖判断用，
                            手动执行不需要加）
 
+服务管理（zero 手动改配置：systemd unit 里的绝对路径由本命令自动填入）:
+  service install          安装并启用 systemd/ 目录下的所有 unit（写入 ~/.config/systemd/user/）
+  service status            查看已安装 unit 的运行状态
+  service uninstall         停止并卸载已安装的 unit
+
   help                     显示本帮助
 EOF
 }
@@ -253,6 +258,84 @@ cmd_run() {
 }
 
 # ===========================================================================
+# service：安装/管理 systemd --user unit
+# ===========================================================================
+SYSTEMD_SRC_DIR="${BACKUP_HOME}/systemd"
+SYSTEMD_USER_DIR="${HOME}/.config/systemd/user"
+
+# 列出 systemd/ 目录下所有 unit 模板文件的文件名（.service/.timer）
+list_unit_templates() {
+    find "$SYSTEMD_SRC_DIR" -maxdepth 1 -type f \( -name '*.service' -o -name '*.timer' \) -printf '%f\n' 2>/dev/null | sort
+}
+
+cmd_service_install() {
+    command -v systemctl >/dev/null 2>&1 || die "未检测到 systemctl，当前系统不支持 systemd --user"
+
+    local units
+    units="$(list_unit_templates)"
+    [[ -n "$units" ]] || die "systemd/ 目录下没有任何 unit 模板"
+
+    mkdir -p "$SYSTEMD_USER_DIR"
+
+    local name
+    while IFS= read -r name; do
+        # 用真实的 BACKUP_HOME 绝对路径替换模板里的占位符，写到 ~/.config/systemd/user/，
+        # 这样用户不需要手动打开 unit 文件改任何路径
+        sed "s#__BACKUP_HOME__#${BACKUP_HOME}#g" "${SYSTEMD_SRC_DIR}/${name}" > "${SYSTEMD_USER_DIR}/${name}"
+        ok "已写入 ${SYSTEMD_USER_DIR}/${name}"
+    done <<< "$units"
+
+    systemctl --user daemon-reload
+
+    while IFS= read -r name; do
+        # .timer 只需要启用自己；对应的 .service 走 timer 触发，不需要 --now 常驻启动
+        if [[ "$name" == *.timer ]]; then
+            systemctl --user enable --now "$name"
+        elif [[ "$name" == *.service ]]; then
+            # 如果同名 .timer 也在这批 unit 里，说明这个 .service 是给 timer 用的 oneshot，
+            # 不需要单独 enable --now（timer 会负责触发它）
+            local base="${name%.service}"
+            if printf '%s\n' "$units" | grep -qxF "${base}.timer"; then
+                info "跳过单独启动 ${name}（由 ${base}.timer 负责触发）"
+            else
+                systemctl --user enable --now "$name"
+            fi
+        fi
+    done <<< "$units"
+
+    ok "服务安装完成"
+    log_line "service install: $(echo "$units" | tr '\n' ' ')"
+    warn "注意：systemd --user 服务默认只在你登录桌面会话期间运行。如果希望笔记本合盖/注销后台仍继续跑，"
+    warn "可执行: loginctl enable-linger \$USER（一次性设置，本命令不会自动帮你执行）"
+}
+
+cmd_service_status() {
+    local units
+    units="$(list_unit_templates)"
+    [[ -n "$units" ]] || die "systemd/ 目录下没有任何 unit 模板"
+    while IFS= read -r name; do
+        echo "=== ${name} ==="
+        systemctl --user status "$name" --no-pager -l || true
+        echo
+    done <<< "$units"
+}
+
+cmd_service_uninstall() {
+    local units
+    units="$(list_unit_templates)"
+    [[ -n "$units" ]] || die "systemd/ 目录下没有任何 unit 模板"
+    while IFS= read -r name; do
+        if [[ -f "${SYSTEMD_USER_DIR}/${name}" ]]; then
+            systemctl --user disable --now "$name" 2>/dev/null || true
+            rm -f "${SYSTEMD_USER_DIR}/${name}"
+            ok "已卸载 ${name}"
+        fi
+    done <<< "$units"
+    systemctl --user daemon-reload
+    log_line "service uninstall: $(echo "$units" | tr '\n' ' ')"
+}
+
+# ===========================================================================
 # 分发
 # ===========================================================================
 main() {
@@ -278,6 +361,15 @@ main() {
             esac
             ;;
         run) cmd_run "$@" ;;
+        service)
+            local sub="${1:-}"; shift || true
+            case "$sub" in
+                install)   cmd_service_install ;;
+                status)    cmd_service_status ;;
+                uninstall) cmd_service_uninstall ;;
+                *) die "未知子命令: service ${sub}（可用: install/status/uninstall）" ;;
+            esac
+            ;;
         help|-h|--help) usage ;;
         *) usage; [[ "$cmd" == "help" ]] || exit 1 ;;
     esac
