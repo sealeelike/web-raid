@@ -7,7 +7,7 @@
 在目标 VPS 上以 root 执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<your-gh>/<repo>/main/setup-backup-server-hardened.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sealeelike/web-raid/main/setup-backup-server-hardened.sh | bash
 ```
 
 或者下载后本地执行：
