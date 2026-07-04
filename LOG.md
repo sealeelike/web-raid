@@ -25,6 +25,14 @@
 - 踩坑与修复详见 `doc/02-vps-setup-script.md`（tar.gz 解压路径、`--private-repos` 模式下根路径鉴权自检逻辑错误）
 - 端口 `9199` 确认与现有 nginx/xray/x-ui 均无冲突
 
+## 2026-07-04 — Module 3: backupctl 骨架（target/path 管理）
+
+- 新增 `bin/lib.sh`（颜色 helper、路径解析、`resolve_restic()` 免 root 兜底下载）与 `bin/backupctl`（`target add/list/remove`、`path add/remove/list`）
+- 补上 `.gitignore` 里漏掉的 `config/targets/*.pass`（发现时仓库密码文件本会被 git 追踪到，已修复）
+- 踩坑与修复：`path remove` 删除最后一条记录时 `set -euo pipefail` + `grep -v` 空输出退出码 1 导致 `mv` 被短路、静默不生效；顺带发现并修复了 `backup-server-setup` 仓库里 VPS 脚本"仅新增凭据"分支端口占用检查顺序错误的 bug（复用场景下端口本来就该被占用，却被当成冲突拒绝）
+- 端到端验证：针对真实测试 VPS，`target add` 粘贴凭据 → `restic init` → `restic backup` → `restic snapshots` 全部跑通；`target remove`、`path add/remove/list`（含删除最后一条记录的边界场景）均复测通过
+- 详见 `doc/03-backupctl-skeleton.md`
+
 ## 下一步
 
-Module 3: 笔记本端 `backupctl` 骨架（target/path 管理）
+Module 4: `backupctl run`（实际备份执行：多 target 遍历、nice/ionice 限速、flock 防并发、成功后 forget --prune）
