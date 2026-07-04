@@ -30,9 +30,11 @@ path 管理:
                            退出码：0=成功，1=备份/清理失败，75=锁被占用本次跳过（可重试）
 
 服务管理（zero 手动改配置：systemd unit 里的绝对路径由本命令自动填入）:
-  service install          安装并启用 systemd/ 目录下的所有 unit（写入 ~/.config/systemd/user/）
+  service install          安装并启用 systemd/ 目录下的所有 unit（写入 ~/.config/systemd/user/），开机/登录后自动运行
   service status            查看已安装 unit 的运行状态
-  service uninstall         停止并卸载已安装的 unit
+  service stop              暂停正在运行的后台监控（不删配置、不取消开机自启，随时可以 start 恢复）
+  service start             恢复被 service stop 暂停的后台监控
+  service uninstall         彻底停止并卸载已安装的 unit（取消开机自启，删除 systemd 配置文件）
 
   help                     显示本帮助
 EOF
@@ -354,6 +356,40 @@ cmd_service_uninstall() {
     log_line "service uninstall: $(echo "$units" | tr '\n' ' ')"
 }
 
+# 只暂停正在运行的服务，不删配置文件、不取消开机自启——下次 start 或重新登录/重启后还会按原样恢复
+cmd_service_stop() {
+    local units
+    units="$(list_unit_templates)"
+    [[ -n "$units" ]] || die "systemd/ 目录下没有任何 unit 模板"
+    local found=0
+    while IFS= read -r name; do
+        if [[ -f "${SYSTEMD_USER_DIR}/${name}" ]]; then
+            found=1
+            systemctl --user stop "$name" 2>/dev/null || true
+            ok "已停止 ${name}"
+        fi
+    done <<< "$units"
+    [[ $found -eq 1 ]] || die "还没有安装任何服务，先执行 'backupctl service install'"
+    log_line "service stop: $(echo "$units" | tr '\n' ' ')"
+}
+
+# 恢复被 service stop 暂停的服务（不重新写配置，只是重新启动已安装的 unit）
+cmd_service_start() {
+    local units
+    units="$(list_unit_templates)"
+    [[ -n "$units" ]] || die "systemd/ 目录下没有任何 unit 模板"
+    local found=0
+    while IFS= read -r name; do
+        if [[ -f "${SYSTEMD_USER_DIR}/${name}" ]]; then
+            found=1
+            systemctl --user start "$name" 2>/dev/null || true
+            ok "已启动 ${name}"
+        fi
+    done <<< "$units"
+    [[ $found -eq 1 ]] || die "还没有安装任何服务，先执行 'backupctl service install'"
+    log_line "service start: $(echo "$units" | tr '\n' ' ')"
+}
+
 # ===========================================================================
 # 分发
 # ===========================================================================
@@ -385,8 +421,10 @@ main() {
             case "$sub" in
                 install)   cmd_service_install ;;
                 status)    cmd_service_status ;;
+                stop)      cmd_service_stop ;;
+                start)     cmd_service_start ;;
                 uninstall) cmd_service_uninstall ;;
-                *) die "未知子命令: service ${sub}（可用: install/status/uninstall）" ;;
+                *) die "未知子命令: service ${sub}（可用: install/status/stop/start/uninstall）" ;;
             esac
             ;;
         help|-h|--help) usage ;;

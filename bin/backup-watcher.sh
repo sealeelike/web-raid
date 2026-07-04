@@ -29,7 +29,11 @@ cleanup() {
     done
     wait 2>/dev/null || true
 }
-trap cleanup EXIT TERM INT
+trap cleanup EXIT
+# TERM/INT（systemctl stop / Ctrl-C）必须显式 exit 0：否则进程会以信号对应的退出码
+# （143/130）结束，systemd 在 unit 没声明 SuccessExitStatus 的情况下会把这次正常停止
+# 误判成"失败"（is-active 显示 failed 而不是 inactive/stopped）
+trap 'cleanup; exit 0' TERM INT
 
 # 单个目录的独立监控循环：只对这一个目录计时、只触发这一个目录的备份，
 # 跟其他目录的忙闲状态、触发时机完全无关
