@@ -64,8 +64,32 @@ restic 的内容去重只发生在**同一个仓库内部**。`deviceA` 和 `dev
 
 本次为了在同一台物理机（本机）上模拟"两台不同设备"，`deviceA`、`deviceB` 两个 target 用的是同一份本机 `config/paths.conf`——所以 `backupctl run --target deviceA`（不带 `--path`）实际会把 `paths.conf` 里当时登记的全部目录（当时误包含了 `/tmp/backup-devB-dir`）都备份进 `deviceA` 的仓库。这纯粹是"用一台机器模拟两台设备"这个测试方法本身带来的假象，不是 rest-server 隔离出了问题——真实场景里，`deviceA`、`deviceB` 会是两台完全独立的物理机器，各自运行独立的 `backupctl` 安装、各自独立的 `paths.conf`，不会有这种共享配置导致的数据混入。
 
+## 追加验证（2026-07-04，用户追问"A 用户有可能渗透进入 B 的空间吗？"后做的对抗性测试）
+
+前面第 7 步的跨认证测试只证明了"用错密码访问对方路径会 401"，这不足以回答"A 能不能通过某种手段绕过鉴权直接拿到 B 的数据"。`rest-server` 的 `--private-repos` 机制历史上确实出过两次真实的目录穿越漏洞：
+
+- **CVE 修复于 0.10.0**：把 URL 里的 `/` 编码成 `%2F`，rest-server 用的 HTTP 路由框架会先解码再处理，导致 `foo%2F..%2Fbar` 变成实际路径 `foo/../bar`，可以越权访问其他用户的仓库文件
+- **CVE 修复于 0.11.0**：注册一个包含 `/` 的用户名（比如 `foo/config`），可以直接访问/删除 `foo` 用户的 `config` 文件
+
+先查证了我们的 VPS 一键脚本装的是什么版本——脚本永远从 GitHub 拉 `releases/latest`（不是钉死某个旧版本号），当前拉到的是 `v0.14.0`（2025-05-31 发布），确认已经远远晚于上面两个漏洞的修复版本。但"看 changelog 说修了"不等于"在我们的部署上真的验证过"，所以又专门起了一个临时测试实例（port 9195，两个真实用户 `deviceA`、`deviceC`，`deviceC` 有真实备份内容 `TOP SECRET device C content`），拿 `deviceA` 的合法凭据尝试了以下每一种手段访问/破坏 `deviceC` 的真实数据：
+
+| 尝试方式 | 结果 | 说明 |
+|---|---|---|
+| 未编码 `deviceA/../deviceC/config` | `401` | curl 自己先把路径规整化了，等于直接请求 `/deviceC/config`，鉴权直接拒绝 |
+| `%2F` 编码穿越（对应 0.10.0 那个 CVE 的手法） | `404`，不是 `deviceC` 的真实内容 | 关键判定点：因为 `deviceC/config` 真实存在（控制组用 `deviceC` 自己的凭据读取同一路径拿到了 200 + 真实密文），如果穿越真的生效，这里应该也拿到同样的 200+密文，而不是 404。证明穿越没有生效 |
+| `%252F` 双重编码 | `401` | 同样被当作鉴权失败处理，没有触发任何解码穿越 |
+| `curl --path-as-is` 发送真正带字面 `..` 的路径 | 服务端先返回 `301` 重定向到 `/deviceC/config`（Go 标准库 `net/http` 对带 `..` 的路径做规整化重定向），但 `-L` 跟随重定向后最终仍是 `401` | 重定向本身不代表越权成功——客户端跟着重定向重新发起请求时，服务端会用重定向后的真实路径重新做一遍完整鉴权，`deviceA` 的凭据在 `/deviceC/config` 这个路径上依然通不过 |
+| 用 `deviceA` 凭据对 `deviceC/config` 直接发 `DELETE`（对应 0.11.0 那个 CVE 想干的"删除别人仓库文件"） | `401` | 破坏性操作同样先过鉴权这一关，未授权直接被拒绝，`deviceC` 的数据全程完好 |
+| 手动往 `.htpasswd` 里塞一个真实包含 `/` 的用户名 `deviceA/config`（模拟 0.11.0 那个 CVE 的构造手法），用它的凭据访问/删除 `deviceA/config` | `401`（GET 和 DELETE 均是） | 当前版本正确拒绝了这种畸形用户名的鉴权，即使这个用户名已经被写进了 `.htpasswd` 文件里 |
+
+全部对抗性测试完成后，重新用 `deviceC` 自己的真实凭据确认它的 `config` 依旧能正常读到（`200`），内容没有被前面这些尝试污染或删除。
+
+**结论**：在当前部署版本（v0.14.0）上，跨用户越权读取或破坏对方数据的两条历史已知路径都已被修复，本次额外用真实数据做了对抗性验证，没有找到绕过方法。这个结论只对"当前版本、当前部署方式"成立——一键脚本每次都会去拉最新版本，所以只要脚本本身不被改成钉死某个旧版本号，这个防护会随上游版本更新持续有效；但如果将来脚本改成离线安装某个缓存的旧二进制，就需要重新确认版本号是否还在安全范围内。
+
+另外一个更根本的边界（在前面"隔离的性质"一节已经写过，这里再强调一次）：以上验证的是**应用层鉴权**能不能被绕过，不能替代"VPS root/系统账户层面的隔离"——如果攻击者拿到的是 VPS root 权限或者 `restic-rest-server` 系统账户本身的权限，这些鉴权检查完全不适用，因为攻击者已经不需要通过 HTTP 接口访问文件了。这次测试回答的问题是"一个只知道自己那份 restic 凭据的客户端 A，能不能够到客户端 B 的数据"，答案是"在当前版本上不能"；不是"VPS 本身被攻破后数据还安不安全"这个更大的问题。
+
 ## 清理
 
 测试完毕后已完全清理：
-- 本机：`backupctl target remove deviceA/deviceB`（删除本地凭据/证书/仓库密码配置）、`backupctl path remove` 两个测试目录、`rm -rf` 两个测试目录本身
-- VPS：`systemctl stop/disable restic-rest-server`、删除 systemd unit 文件并 `daemon-reload`、`rm -rf /opt/restic-rest-server`、`userdel restic-rest-server`、清理 `/root/` 下临时脚本副本，确认端口 9196 已释放、服务和用户均已不存在
+- 本机：`backupctl target remove deviceA/deviceB/deviceC-sec`（删除本地凭据/证书/仓库密码配置）、`backupctl path remove` 各测试目录、`rm -rf` 测试目录本身
+- VPS：两轮临时实例（端口 9196、9195）均已 `systemctl stop/disable restic-rest-server`、删除 systemd unit 文件并 `daemon-reload`、`rm -rf /opt/restic-rest-server`、`userdel restic-rest-server`、清理 `/root/` 下临时脚本副本，确认端口已释放、服务和用户均已不存在
