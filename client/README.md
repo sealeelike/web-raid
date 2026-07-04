@@ -1,4 +1,4 @@
-# backup — 本机 单机增量加密备份系统
+# client — 本机 单机增量加密备份系统（笔记本端）
 
 主力机 `本机`（不常驻在线的笔记本）到自建 VPS 的增量、加密、原子性备份系统。设计上可平滑扩展到多个 VPS 目标（"copy 模式"：同一份数据独立备份到每一个目标）。
 
@@ -19,7 +19,7 @@
 在 VPS 上以 root 执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sealeelike/web-raid/main/setup-backup-server-hardened.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sealeelike/web-raid/main/server-setup/setup-backup-server-hardened.sh | bash
 ```
 
 脚本跑完会打印一行凭据 blob，复制它。
