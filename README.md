@@ -44,11 +44,59 @@ bin/backupctl path add ~/Documents
 bin/backupctl run --force
 ```
 
-### 5. 查看状态
+### 5. 安装后台自动监控（可选，装好之后就不用管了）
 
 ```bash
-bin/backupctl status
+bin/backupctl service install
 ```
+
+装完之后，目录有变化会在静默期后自动触发备份，不需要再手动跑 `run`。
+
+## 日常操作命令一览
+
+现阶段（开发中）所有操作都是命令行；后续计划做 TUI（终端菜单式界面），更成熟后再考虑 GUI——见文末"路线图"。
+
+### 备份目标（VPS）管理
+
+```bash
+bin/backupctl target add              # 粘贴 VPS 一键脚本打印的凭据 blob，交互式添加一个目标
+bin/backupctl target list             # 列出已配置的所有目标
+bin/backupctl target remove <name>    # 删除本机的目标配置（不影响远端 VPS 上已有的数据）
+```
+
+### 备份目录管理
+
+```bash
+bin/backupctl path add [目录]         # 添加一个备份源目录（不填参数默认当前目录）
+bin/backupctl path remove <目录>      # 从备份源中移除一个目录
+bin/backupctl path list               # 列出所有已配置的备份源目录
+```
+
+### 手动执行备份
+
+```bash
+bin/backupctl run                     # 对所有已启用的目标、所有目录跑一次备份
+bin/backupctl run --target <name>     # 只对指定目标跑
+bin/backupctl run --path <目录>       # 只备份 paths.conf 里的这一个目录
+```
+日常不需要手动执行——装了 `service install` 之后会自动触发。这条命令主要用于立即测试或临时补跑一次。
+
+### 后台自动监控（service）
+
+```bash
+bin/backupctl service install         # 安装并启用后台监控，开机/登录后自动运行
+bin/backupctl service status          # 查看当前运行状态
+bin/backupctl service stop            # 暂停后台监控（不删配置、不取消开机自启，随时可以 start 恢复）
+bin/backupctl service start           # 恢复被 service stop 暂停的后台监控
+bin/backupctl service uninstall       # 彻底停止并卸载（取消开机自启，删除 systemd 配置文件）
+```
+只是想临时"别再自动备份了"（比如流量紧张的场合），用 `service stop`；确定以后都不需要了才用 `service uninstall`。
+
+## 路线图
+
+- 当前阶段：CLI 命令行操作，功能优先，交互在命令内部已尽量做到"回车用默认值、无需手动改配置文件"
+- 后续计划：命令行菜单式 TUI，把上面这些命令收进一个交互式界面，减少记命令的负担
+- 更远期：桌面 GUI（视需求而定）
 
 ## 目录结构
 
