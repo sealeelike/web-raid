@@ -22,7 +22,7 @@
 9. **幂等**：重新运行脚本时如果检测到已安装，提供"仅新增一个新的备份来源凭据"（复用同一个 rest-server，给新客户端一个新用户）或"完全重新安装"两个选项——为将来同一台 VPS 服务多个来源留了口子
 10. **凭据 blob**：`{host, port, user, pass, cert_pem_b64}` 打包成 JSON 再 base64 成一行，笔记本端 `backupctl target add` 直接粘贴解析（cert 用 base64 是因为 PEM 本身带真实换行，塞进单行 JSON 字符串不方便转义）
 
-## 实测记录（2026-07-04，测试 VPS <vps-name>）
+## 实测记录（2026-07-04，测试 VPS）
 
 - 端口 9199 确认未被占用（与已有 nginx/xray/x-ui 均无冲突）
 - 全新环境跑通：依赖自动安装 → 下载 v0.14.0 rest-server(amd64) → 自签证书 → 生成凭据 → 服务启动 `active`

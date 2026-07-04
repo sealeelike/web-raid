@@ -28,7 +28,7 @@
 
 ## 实测记录（2026-07-04）
 
-在测试 VPS（`<vps-host>`，为避免影响已有的常驻测试实例，临时用 `9198` 端口重新跑了一次一键脚本得到独立测试凭据，验证完毕后已在 VPS 上完全清理这次临时安装）：
+在测试 VPS（为避免影响已有的常驻测试实例，临时用 `9198` 端口重新跑了一次一键脚本得到独立测试凭据，验证完毕后已在 VPS 上完全清理这次临时安装）：
 
 1. `bash -n` 通过 `bin/backup-ticker.sh`、`bin/lib.sh`、`bin/backupctl` 全部语法检查
 2. **达标触发场景**：`BACKUP_TICKER_THRESHOLD_HOURS=1 BACKUP_TICKER_INTERVAL_SECONDS=1800`（阈值=2 ticks）手动跑两次 `backup-ticker.sh`：第一次 tick 文件写入 `1`、不触发；第二次 tick 文件先算出 `2` 达标，触发 `backupctl run --force --path`，`restic snapshots` 确认真的产生了新快照，成功后 tick 文件被清零为 `0`

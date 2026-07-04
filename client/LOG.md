@@ -12,7 +12,7 @@
 
 ### 测试 VPS 信息
 
-- `<vps-name>` / `<vps-host>:22`，Debian 12，已用专用 SSH key 打通（`~/.ssh/id_ed25519_backup_test`）
+- Debian 12，已用专用 SSH key 打通
 - 已占用端口：nginx(80,8447)、xray(443, 本地62789/11111)、x-ui(57680) —— rest-server 计划用 `9199`，Module 2 里会先探测确认未占用
 - 缺 `git`、`apache2-utils`(htpasswd)，Module 2 脚本里会自动安装
 
@@ -21,7 +21,7 @@
 ## 2026-07-04 — Module 2: VPS 端一键脚本
 
 - 编写 `backup-server-setup/setup-backup-server-hardened.sh`（独立目录，风格参照 `install-agent-hardened.sh`）
-- 在测试 VPS `<vps-name>` 上完整跑通两次（含一次故意重装验证幂等逻辑），最终做了端到端验证：`restic init` → `restic backup` → `restic snapshots` 全部针对真实部署的 rest-server 跑通
+- 在测试 VPS 上完整跑通两次（含一次故意重装验证幂等逻辑），最终做了端到端验证：`restic init` → `restic backup` → `restic snapshots` 全部针对真实部署的 rest-server 跑通
 - 踩坑与修复详见 `doc/02-vps-setup-script.md`（tar.gz 解压路径、`--private-repos` 模式下根路径鉴权自检逻辑错误）
 - 端口 `9199` 确认与现有 nginx/xray/x-ui 均无冲突
 
@@ -43,7 +43,7 @@
 
 - 新增 `bin/backup-watcher.sh`：单次 `inotifywait -r --timeout` 循环（退出码 0=事件/2=超时，实测确认），去抖状态机（`dirty` + `last_event_epoch`），静默期默认 600 秒，触发失败不放弃、下轮自动重试
 - 新增 `systemd/backup-watcher.service`（`__BACKUP_HOME__` 占位符模板）+ `backupctl service install/status/uninstall`：通用批量安装逻辑，`sed` 替换占位符为真实路径写入 `~/.config/systemd/user/`，为模块 6 的 ticker unit 预留好同一套安装逻辑
-- 环境准备：本机 缺 `inotify-tools` 且无免密 sudo，用已配置好的图形化 askpass（`sudo -A apt-get install -y inotify-tools`）解决，不需要用户在对话里输入密码
+- 环境准备：本机缺 `inotify-tools` 且无免密 sudo，用已配置好的图形化 askpass（`sudo -A apt-get install -y inotify-tools`）解决，不需要用户在对话里输入密码
 - 端到端验证：新建测试 target + 测试目录，短静默期（15s）模拟连续两次写入，确认去抖真正等满静默期才触发、`backupctl run --force` 被自动调用且成功产生新快照；`service install/status/uninstall` 全流程针对真实 systemd --user 验证通过
 - 详见 `doc/05-backup-watcher.md`
 

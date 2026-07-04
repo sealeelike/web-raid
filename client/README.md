@@ -1,6 +1,6 @@
-# client — 本机 单机增量加密备份系统（笔记本端）
+# client — 单机增量加密备份系统（笔记本端）
 
-主力机 `本机`（不常驻在线的笔记本）到自建 VPS 的增量、加密、原子性备份系统。设计上可平滑扩展到多个 VPS 目标（"copy 模式"：同一份数据独立备份到每一个目标）。
+主力机（不常驻在线的笔记本）到自建 VPS 的增量、加密、原子性备份系统。设计上可平滑扩展到多个 VPS 目标（"copy 模式"：同一份数据独立备份到每一个目标）。
 
 ## 项目亮点 / 特性
 
@@ -27,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/sealeelike/web-raid/main/server-set
 ### 2. 笔记本端
 
 ```bash
-cd <client 目录>
+cd client   # 克隆下来的 web-raid 仓库里的 client 目录
 bin/backupctl target add
 # 粘贴上面的凭据 blob，回车确认默认值即可
 ```

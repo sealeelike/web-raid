@@ -41,7 +41,7 @@
 
 ## 环境准备
 
-`inotifywait` 来自 `inotify-tools` 包，本机 默认没有装、也没有免密 sudo。通过已配置好的图形化 askpass 助手解决（`sudo -A apt-get install -y inotify-tools`，弹出 GNOME 图形密码框，不需要在终端/对话里输入密码）——细节见 memory 里的 `sudo_askpass` 记录和 `~/READMEs/sudo-askpass.md`。
+`inotifywait` 来自 `inotify-tools` 包，本机默认没有装、也没有免密 sudo。通过已配置好的图形化 askpass 助手解决（`sudo -A apt-get install -y inotify-tools`，弹出 GNOME 图形密码框，不需要在终端/对话里输入密码）。
 
 ## 已知待办 / 注意事项
 

@@ -62,7 +62,7 @@ restic 的内容去重只发生在**同一个仓库内部**。`deviceA` 和 `dev
 
 ## 一个测试环境本身的注意点（非产品问题）
 
-本次为了在同一台物理机（本机）上模拟"两台不同设备"，`deviceA`、`deviceB` 两个 target 用的是同一份本机 `config/paths.conf`——所以 `backupctl run --target deviceA`（不带 `--path`）实际会把 `paths.conf` 里当时登记的全部目录（当时误包含了 `/tmp/backup-devB-dir`）都备份进 `deviceA` 的仓库。这纯粹是"用一台机器模拟两台设备"这个测试方法本身带来的假象，不是 rest-server 隔离出了问题——真实场景里，`deviceA`、`deviceB` 会是两台完全独立的物理机器，各自运行独立的 `backupctl` 安装、各自独立的 `paths.conf`，不会有这种共享配置导致的数据混入。
+本次为了在同一台物理机上模拟"两台不同设备"，`deviceA`、`deviceB` 两个 target 用的是同一份本机 `config/paths.conf`——所以 `backupctl run --target deviceA`（不带 `--path`）实际会把 `paths.conf` 里当时登记的全部目录（当时误包含了 `/tmp/backup-devB-dir`）都备份进 `deviceA` 的仓库。这纯粹是"用一台机器模拟两台设备"这个测试方法本身带来的假象，不是 rest-server 隔离出了问题——真实场景里，`deviceA`、`deviceB` 会是两台完全独立的物理机器，各自运行独立的 `backupctl` 安装、各自独立的 `paths.conf`，不会有这种共享配置导致的数据混入。
 
 ## 追加验证（2026-07-04，用户追问"A 用户有可能渗透进入 B 的空间吗？"后做的对抗性测试）
 
