@@ -99,6 +99,15 @@
 - 测试完毕本地配置和 VPS 临时实例（rest-server + archiver 两部分）均已完全清理
 - 详见 `doc/09-archive-and-prune.md`
 
-## 下一步
+## 2026-07-04 — Module 10: 端到端总校验
 
-Module 10: 端到端总校验（对照原始设计的完整"校验计划"逐条走一遍）
+- 不是新代码，用一套全新临时实例（VPS 端口 9193）对照原始设计文档"校验计划"的 7 条逐一走一遍：VPS 一键脚本人工检查、`target add`/`restic init`、`path add`+watcher 事件触发、累计开机 tick 兜底（临时调低阈值，验证"零文件改动也能强制触发"）、kill -9 中断恢复模拟、nice/ionice 限速验证（实测 `ni=19`/`ionice class=idle`）、归档正确性（`KEEP_COUNT=4` 连续 5 轮，确认锁跟随最新归档滚动、超限正确淘汰、硬链接去重、且新增了一次直接 `rm -rf` 已锁归档的攻击性验证，被内核 `Operation not permitted` 拒绝）
+- 顺带发现并验证了一个真实并发场景：kill -9 打断的备份和 watcher 独立触发的重试几乎同时发生，本地 `flock` 正确让第二个调用拿到 `EX_LOCK_BUSY` 退让，而不是互相破坏；重试那次因为脚本无条件 `restic unlock`，没有被任何残留的远端 stale lock 挡住
+- 顺带发现一个时序细节：`backup-watcher.sh` 的静默期判断只在固定 `CHECK_INTERVAL=30s` 的 `inotifywait` 超时点重新评估，所以 `DEBOUNCE_SECONDS` 调得再小，实际触发延迟下限也是 30s
+- **意外发现（未处理，留待用户决定）**：测试 VPS 上 `:9199` 端口监听的其实是本项目自己的 `rest-server` 二进制（很可能是模块 3/4 早期测试遗留的孤儿进程），不是此前一直以为的 `sysmetrics-agent`——继续遵守"不碰 9199"的约定，只如实记录
+- 测试完毕，VPS 侧（`restic-rest-server`+`backup-archiver` 两个服务、专用账户、数据目录）和本机侧（target/path/三个 systemd --user 服务/临时 drop-in override）全部完全清理
+- 详见 `doc/10-e2e-validation.md`
+
+## 项目状态
+
+原始设计的 10 个模块（骨架 → VPS 脚本 → backupctl → run → watcher → ticker → 通知 → 端到端校验，中间穿插模块 8/9 的隔离验证与归档层）已全部完成并逐一通过真实测试 VPS 的端到端验证。下一步是用户计划中"模拟真实用户体验"的独立验收：把仓库推到 `github.com/sealeelike/web-raid` 后，用 README 里的一键 curl 脚本从零跑一遍真实部署流程。
