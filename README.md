@@ -19,7 +19,7 @@
 在 VPS 上以 root 执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<your-gh>/<repo>/main/backup-server-setup/setup-backup-server-hardened.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sealeelike/web-raid/main/setup-backup-server-hardened.sh | bash
 ```
 
 脚本跑完会打印一行凭据 blob，复制它。
