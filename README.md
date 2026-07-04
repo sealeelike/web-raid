@@ -29,5 +29,17 @@ bash setup-backup-server-hardened.sh
 
 ## 设计要点
 
-- 不使用 `--append-only`：与"保留最近 N 份快照"天然冲突，防篡改改由笔记本端项目的每日归档层（与实时仓库权限隔离）负责，详见 `backup/doc/00-architecture.md`
+- 不使用 `--append-only`：与"保留最近 N 份快照"天然冲突，防篡改改由笔记本端项目的每日归档层（与实时仓库权限隔离）负责，详见下面的 `install-archiver.sh`
 - `--private-repos`：一个 rest-server 实例按用户名隔离多个独立仓库，天然支持未来多客户端/多来源
+
+## 归档层：install-archiver.sh
+
+`setup-backup-server-hardened.sh` 部署完成后，在同一台 VPS 上以 root 再跑一次：
+
+```bash
+bash install-archiver.sh
+```
+
+给这台 VPS 追加一个"每日归档 + 按份数淘汰"层：每天把 `rest-server` 的实时仓库数据（`--private-repos` 下每个用户各自的仓库目录）用 `rsync --link-dest` 硬链接归档一份到独立目录（默认 `/srv/backup-archive`），归档目录归 root 所有、权限 700，`rest-server` 的服务账户对它没有任何读写权限——即使笔记本这端的备份凭据被完全攻破，攻击者能删的只有实时仓库，删不到任何一份历史归档。淘汰旧归档按"份数"（默认保留 7 份），不按日期，笔记本长期离线不产生新归档也不会误删仅存的历史。
+
+重新运行本脚本可以调整保留份数等参数，不会丢已有归档。详细设计和真实测试记录见 `backup/doc/09-archive-and-prune.md`（笔记本端仓库）。
