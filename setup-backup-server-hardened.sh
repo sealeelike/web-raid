@@ -50,21 +50,14 @@ case "$(uname -m)" in
 esac
 info "检测到架构: $(uname -m) -> ${RS_ARCH}"
 
-# ========================= 交互：伪装名 / 安装路径 / 端口 =========================
+# ========================= 交互：伪装名 / 安装路径 =========================
 read -rp "服务伪装名（用作安装目录/系统用户名，直接回车用默认 [sysmetrics-agent]）: " DISGUISE
 DISGUISE="${DISGUISE:-sysmetrics-agent}"
 INSTALL_DIR="/opt/${DISGUISE}"
 SVC_USER="${DISGUISE}"
 
-DEFAULT_PORT=9199
-read -rp "监听端口（直接回车用默认 [${DEFAULT_PORT}]): " LISTEN_PORT
-LISTEN_PORT="${LISTEN_PORT:-$DEFAULT_PORT}"
-if ss -tln 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${LISTEN_PORT}\$"; then
-    die "端口 ${LISTEN_PORT} 已被占用，请重新运行并选择其他端口"
-fi
-ok "将使用端口 ${LISTEN_PORT}"
-
-# 已存在安装时的处理
+# 已存在安装时的处理（先判断是否已安装，再决定要不要问端口——
+# "仅新增凭据"分支复用现有服务正在监听的端口，不应该再对这个端口做占用检查）
 FIRST_INSTALL=1
 if [[ -x "${INSTALL_DIR}/rest-server" ]] && systemctl list-unit-files | grep -q "^${DISGUISE}.service"; then
     FIRST_INSTALL=0
@@ -78,8 +71,24 @@ if [[ -x "${INSTALL_DIR}/rest-server" ]] && systemctl list-unit-files | grep -q 
         systemctl stop "${DISGUISE}.service" 2>/dev/null || true
         systemctl disable "${DISGUISE}.service" 2>/dev/null || true
         rm -rf "${INSTALL_DIR}"
+        rm -f "/etc/systemd/system/${DISGUISE}.service"
+        systemctl daemon-reload
         FIRST_INSTALL=1
+    else
+        LISTEN_PORT="$(grep -oP '(?<=--listen :)\d+' "/etc/systemd/system/${DISGUISE}.service" | head -n1)"
+        [[ -n "$LISTEN_PORT" ]] || die "无法从现有服务读取监听端口，建议选择完全重新安装"
+        ok "复用现有服务，监听端口: ${LISTEN_PORT}"
     fi
+fi
+
+if [[ $FIRST_INSTALL -eq 1 ]]; then
+    DEFAULT_PORT=9199
+    read -rp "监听端口（直接回车用默认 [${DEFAULT_PORT}]): " LISTEN_PORT
+    LISTEN_PORT="${LISTEN_PORT:-$DEFAULT_PORT}"
+    if ss -tln 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${LISTEN_PORT}\$"; then
+        die "端口 ${LISTEN_PORT} 已被占用，请重新运行并选择其他端口"
+    fi
+    ok "将使用端口 ${LISTEN_PORT}"
 fi
 
 # ========================= 下载 rest-server 二进制 =========================
