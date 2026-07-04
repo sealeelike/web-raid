@@ -31,4 +31,3 @@ bash setup-backup-server-hardened.sh
 
 - 不使用 `--append-only`：与"保留最近 N 份快照"天然冲突，防篡改改由笔记本端项目的每日归档层（与实时仓库权限隔离）负责，详见 `backup/doc/00-architecture.md`
 - `--private-repos`：一个 rest-server 实例按用户名隔离多个独立仓库，天然支持未来多客户端/多来源
-- 服务伪装成通用系统监控 agent 的名字，降低被扫描器识别为备份服务的概率

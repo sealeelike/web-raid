@@ -50,32 +50,31 @@ case "$(uname -m)" in
 esac
 info "检测到架构: $(uname -m) -> ${RS_ARCH}"
 
-# ========================= 交互：伪装名 / 安装路径 =========================
-read -rp "服务伪装名（用作安装目录/系统用户名，直接回车用默认 [sysmetrics-agent]）: " DISGUISE
-DISGUISE="${DISGUISE:-sysmetrics-agent}"
-INSTALL_DIR="/opt/${DISGUISE}"
-SVC_USER="${DISGUISE}"
+# ========================= 安装路径 / 服务名 =========================
+SVC_NAME="restic-rest-server"
+INSTALL_DIR="/opt/${SVC_NAME}"
+SVC_USER="${SVC_NAME}"
 
 # 已存在安装时的处理（先判断是否已安装，再决定要不要问端口——
 # "仅新增凭据"分支复用现有服务正在监听的端口，不应该再对这个端口做占用检查）
 FIRST_INSTALL=1
-if [[ -x "${INSTALL_DIR}/rest-server" ]] && systemctl list-unit-files | grep -q "^${DISGUISE}.service"; then
+if [[ -x "${INSTALL_DIR}/rest-server" ]] && systemctl list-unit-files | grep -q "^${SVC_NAME}.service"; then
     FIRST_INSTALL=0
-    warn "检测到 ${DISGUISE} 已经安装过。"
+    warn "检测到 ${SVC_NAME} 已经安装过。"
     echo "  [1] 仅新增一个备份凭据（给新的备份来源机器用，复用现有服务） (默认)"
     echo "  [2] 完全重新安装（会停止现有服务，覆盖证书与配置）"
     read -rp "请选择 [1]: " REINSTALL_CHOICE
     REINSTALL_CHOICE="${REINSTALL_CHOICE:-1}"
     if [[ "$REINSTALL_CHOICE" == "2" ]]; then
         info "停止并清理现有安装 ..."
-        systemctl stop "${DISGUISE}.service" 2>/dev/null || true
-        systemctl disable "${DISGUISE}.service" 2>/dev/null || true
+        systemctl stop "${SVC_NAME}.service" 2>/dev/null || true
+        systemctl disable "${SVC_NAME}.service" 2>/dev/null || true
         rm -rf "${INSTALL_DIR}"
-        rm -f "/etc/systemd/system/${DISGUISE}.service"
+        rm -f "/etc/systemd/system/${SVC_NAME}.service"
         systemctl daemon-reload
         FIRST_INSTALL=1
     else
-        LISTEN_PORT="$(grep -oP '(?<=--listen :)\d+' "/etc/systemd/system/${DISGUISE}.service" | head -n1)"
+        LISTEN_PORT="$(grep -oP '(?<=--listen :)\d+' "/etc/systemd/system/${SVC_NAME}.service" | head -n1)"
         [[ -n "$LISTEN_PORT" ]] || die "无法从现有服务读取监听端口，建议选择完全重新安装"
         ok "复用现有服务，监听端口: ${LISTEN_PORT}"
     fi
@@ -163,7 +162,7 @@ if [[ $FIRST_INSTALL -eq 1 ]]; then
         "$HOME/.acme.sh/acme.sh" --install-cert -d "$CERT_DOMAIN" --ecc \
             --fullchain-file "$TLS_CERT" \
             --key-file "$TLS_KEY" \
-            --reloadcmd "systemctl restart ${DISGUISE}.service || true"
+            --reloadcmd "systemctl restart ${SVC_NAME}.service || true"
         ok "Let's Encrypt 证书签发完成: ${CERT_DOMAIN}"
         REST_HOST="$CERT_DOMAIN"
         ;;
@@ -219,9 +218,9 @@ ok "已为用户 ${REPO_USER} 生成访问凭据"
 # ========================= systemd 加固服务 =========================
 if [[ $FIRST_INSTALL -eq 1 ]]; then
     info "写入 systemd 服务 ..."
-    cat > "/etc/systemd/system/${DISGUISE}.service" <<EOF
+    cat > "/etc/systemd/system/${SVC_NAME}.service" <<EOF
 [Unit]
-Description=System metrics collection agent
+Description=restic rest-server (backupctl backup target)
 After=network.target
 
 [Service]
@@ -254,19 +253,19 @@ AmbientCapabilities=
 WantedBy=multi-user.target
 EOF
     systemctl daemon-reload
-    systemctl enable --now "${DISGUISE}.service"
+    systemctl enable --now "${SVC_NAME}.service"
     ok "服务已启动并设置为开机自启"
 else
-    systemctl restart "${DISGUISE}.service"
+    systemctl restart "${SVC_NAME}.service"
     ok "服务已重启以应用新增凭据"
 fi
 
 sleep 1
-if systemctl is-active --quiet "${DISGUISE}.service"; then
-    ok "服务运行正常: $(systemctl is-active ${DISGUISE}.service)"
+if systemctl is-active --quiet "${SVC_NAME}.service"; then
+    ok "服务运行正常: $(systemctl is-active ${SVC_NAME}.service)"
 else
     err "服务未能正常启动，日志如下："
-    journalctl -u "${DISGUISE}.service" --no-pager -n 30
+    journalctl -u "${SVC_NAME}.service" --no-pager -n 30
     die "请检查上面的日志"
 fi
 
@@ -280,7 +279,7 @@ AUTH_CODE="$(curl -s -o /dev/null -w '%{http_code}' --resolve "${SELFCHECK_HOST}
 if [[ "$NOAUTH_CODE" == "401" && "$AUTH_CODE" != "401" ]]; then
     ok "本地自检成功：无凭据被拒(401)，正确凭据可通过鉴权(HTTP ${AUTH_CODE})"
 else
-    warn "自检异常：无凭据=${NOAUTH_CODE}，带凭据=${AUTH_CODE}，请手动检查服务日志（journalctl -u ${DISGUISE}.service）"
+    warn "自检异常：无凭据=${NOAUTH_CODE}，带凭据=${AUTH_CODE}，请手动检查服务日志（journalctl -u ${SVC_NAME}.service）"
 fi
 
 # ========================= 生成凭据 blob =========================
