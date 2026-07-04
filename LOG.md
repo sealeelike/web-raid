@@ -80,6 +80,18 @@
 - 端到端验证：假 target 制造真实备份失败，确认失败分支触发（`notify-send` 手动验证在当前图形会话下工作正常）；临时在测试 VPS 起独立 rest-server 实例（端口 9197）跑两次真实成功备份，确认 `success-log` 正确记录，`backup-summary.sh` 正确弹出汇总通知、写日志、清空文件，二次运行正确静默跳过；测试完毕本地配置和 VPS 临时实例均已完全清理
 - 详见 `doc/07-notifications.md`
 
+## 2026-07-04 — Module 8: 同一 VPS 多设备/多客户端隔离验证与文档
+
+- 不是新代码，是给已经存在的能力（VPS 一键脚本"仅新增凭据"默认分支 + `backupctl` 多 target 遍历）补一次真实端到端验证：确认"一台 VPS 服务多台设备"这条 M×N 扇形结构路径是可靠的
+- 用户提问引出：VPS 侧现状是二进制直接部署（受控安装脚本引导，Docker 化是可选的后续方向）、客户端多 target copy 模式已支持多 VPS、VPS 端 `--private-repos` 已支持多用户——组合起来就是设想中的"M2M 矩阵"，本次只做验证+文档，不新增代码
+- 真实测试（临时 rest-server 实例，端口 9196）：`deviceA` 全新安装并端到端跑通 → 用默认"仅新增凭据"分支给同实例加第二个用户 `deviceB`（确认复用端口、复用证书、只追加 `.htpasswd` + `systemctl restart`）→ 验证这次 restart 没有破坏 `deviceA` 已有仓库（重新 `run --force` 正常成功）→ `deviceB` 独立初始化仓库并成功备份（确认懒创建目录：加凭据时不建目录，第一次真正操作才出现）
+- **关键验证**：跨认证隔离测试（`curl` 直接打 rest-server HTTP 接口）——`deviceA`/`deviceB` 各自凭据访问自己的路径均 200，访问对方路径均 401，不带凭据也是 401，五组结果全部符合预期
+- 明确记录隔离的性质：这是 rest-server **应用层**鉴权+路由保证（认证用户名与 URL 路径用户名段必须匹配），不是操作系统层面的文件权限隔离——VPS 上所有客户端的仓库数据在系统层面仍归属同一个 `restic-rest-server` 账户；也记录了已知代价：不同设备的仓库之间没有跨仓库去重
+- 测试完毕本地配置和 VPS 临时实例均已完全清理
+- 详见 `doc/08-multi-device-same-vps.md`
+
 ## 下一步
 
-Module 8: VPS 侧每日归档与保留策略清理（`archive-and-prune.sh`，按份数淘汰而非按日期）
+模块编号顺延：原计划的"VPS 侧每日归档"改为 Module 9，"端到端校验"改为 Module 10。
+
+Module 9: VPS 侧每日归档与保留策略清理（`archive-and-prune.sh`，按份数淘汰而非按日期）
