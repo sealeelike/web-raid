@@ -1,0 +1,12 @@
+[Unit]
+Description=每 15 分钟检查一次是否需要累计开机时长兜底备份
+
+[Timer]
+# 登录/启动后 5 分钟先跑一次，之后每 15 分钟一次；这个 15 分钟必须和
+# backup-ticker.sh 里 BACKUP_TICKER_INTERVAL_SECONDS 的默认值(900)对应
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

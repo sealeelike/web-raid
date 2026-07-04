@@ -1,0 +1,12 @@
+[Unit]
+Description=backup-watcher - 事件驱动 + 静默去抖备份触发器
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=__BACKUP_HOME__/bin/backup-watcher.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

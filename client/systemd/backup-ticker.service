@@ -1,0 +1,7 @@
+[Unit]
+Description=backup-ticker - 累计开机时长兜底备份检查（oneshot）
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=__BACKUP_HOME__/bin/backup-ticker.sh
