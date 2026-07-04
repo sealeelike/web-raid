@@ -72,6 +72,14 @@
 - 端到端验证（真实测试 VPS，临时用 9198 端口起一个独立测试实例，验证完毕已在 VPS 上完全清理）：低阈值场景确认"未达标不触发/达标触发且产生真实快照/成功后清零"；持锁模拟场景确认"锁冲突时 tick 保留、不清零、不放弃"
 - 详见 `doc/06-backup-ticker.md`
 
+## 2026-07-04 — Module 7: 通知策略（失败即时 + 成功每日汇总）
+
+- `bin/lib.sh` 新增 `notify()`（`notify-send` 不存在/失败静默忽略）+ `SUCCESS_LOG` 变量
+- `bin/backupctl` 的 `run_one_target()` 接入两处：成功分支静默追加一行到 `success-log`，失败分支立即 `notify critical` 弹窗——放在这个共同收敛点，手动 `run`/watcher/ticker 三条触发路径自动全部覆盖，不需要各自重复实现
+- 新增 `bin/backup-summary.sh`（oneshot）+ `systemd/backup-summary.service`/`.timer`（`OnCalendar=09:00`，`Persistent=true`）：读 `success-log` 首尾时间戳和行数汇总成一条通知，随后清空该文件；不需要额外记"上次汇总时间"，因为清空后文件天然只包含"距上次汇总以来"的新记录；日志为空时静默跳过，不发送"0 次"通知
+- 端到端验证：假 target 制造真实备份失败，确认失败分支触发（`notify-send` 手动验证在当前图形会话下工作正常）；临时在测试 VPS 起独立 rest-server 实例（端口 9197）跑两次真实成功备份，确认 `success-log` 正确记录，`backup-summary.sh` 正确弹出汇总通知、写日志、清空文件，二次运行正确静默跳过；测试完毕本地配置和 VPS 临时实例均已完全清理
+- 详见 `doc/07-notifications.md`
+
 ## 下一步
 
-Module 7: 通知策略（失败即时弹窗 + 成功每日汇总）——需要接入 watcher 和 ticker 两条触发路径共同的失败/成功记录点
+Module 8: VPS 侧每日归档与保留策略清理（`archive-and-prune.sh`，按份数淘汰而非按日期）

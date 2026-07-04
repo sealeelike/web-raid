@@ -1,0 +1,10 @@
+[Unit]
+Description=每天固定时间汇总一次成功备份通知
+
+[Timer]
+# 早上 9 点弹一次汇总；如果那天笔记本没开机，Persistent=true 会在下次登录时补跑
+OnCalendar=09:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

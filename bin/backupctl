@@ -216,6 +216,8 @@ run_one_target() {
         for p in "${paths[@]}"; do
             echo 0 > "${VAR_DIR}/uptime-ticks.$(path_slug "$p")" 2>/dev/null || true
         done
+        # 成功不逐次打扰：只静默记一行，攒起来由每日汇总（backup-summary.sh）统一弹一次通知
+        echo "$(date '+%Y-%m-%d %H:%M:%S') ${name}" >> "$SUCCESS_LOG"
 
         info "[${name}] 清理旧快照 (keep-last ${KEEP_LAST:-1}) ..."
         if nice -n 19 ionice -c3 "$restic_bin" forget --keep-last "${KEEP_LAST:-1}" --prune; then
@@ -229,6 +231,10 @@ run_one_target() {
     else
         err "[${name}] 备份失败"
         log_line "run: ${name} 备份失败"
+        # 失败立即弹窗，不等每日汇总——不管这次是手动 run 还是 watcher/ticker 自动触发的
+        local where="全部目录"
+        [[ -n "$only_path" ]] && where="目录 ${only_path}"
+        notify critical "备份失败: ${name}" "${where} 备份失败，详情见 ${LOG_FILE}"
         return 1
     fi
 }

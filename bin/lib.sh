@@ -93,3 +93,13 @@ list_targets() {
 path_slug() {
     printf '%s' "$1" | sed 's/[^A-Za-z0-9]/_/g'
 }
+
+SUCCESS_LOG="${VAR_DIR}/success-log"
+
+# 桌面弹窗通知：notify-send 不存在（没装 libnotify-bin）或调用失败（没有图形会话，
+# 比如纯 SSH 场景）都不应该影响调用方，静默忽略即可
+notify() {
+    local urgency="$1" summary="$2" body="${3:-}"
+    command -v notify-send >/dev/null 2>&1 || return 0
+    notify-send -u "$urgency" "$summary" "$body" 2>/dev/null || true
+}

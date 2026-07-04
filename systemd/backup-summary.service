@@ -1,0 +1,7 @@
+[Unit]
+Description=backup-summary - 每日成功备份汇总通知（oneshot）
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=__BACKUP_HOME__/bin/backup-summary.sh
