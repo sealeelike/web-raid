@@ -18,6 +18,13 @@
 
 ---
 
+## 2026-07-04 — Module 2: VPS 端一键脚本
+
+- 编写 `backup-server-setup/setup-backup-server-hardened.sh`（独立目录，风格参照 `install-agent-hardened.sh`）
+- 在测试 VPS `<vps-name>` 上完整跑通两次（含一次故意重装验证幂等逻辑），最终做了端到端验证：`restic init` → `restic backup` → `restic snapshots` 全部针对真实部署的 rest-server 跑通
+- 踩坑与修复详见 `doc/02-vps-setup-script.md`（tar.gz 解压路径、`--private-repos` 模式下根路径鉴权自检逻辑错误）
+- 端口 `9199` 确认与现有 nginx/xray/x-ui 均无冲突
+
 ## 下一步
 
-Module 2: VPS 端一键脚本 `setup-backup-server-hardened.sh`
+Module 3: 笔记本端 `backupctl` 骨架（target/path 管理）

@@ -11,5 +11,8 @@ config/targets/*.crt
 config/targets/*.pem
 config/paths.conf
 
+# restic 客户端二进制（无 apt/root 权限时由 backupctl 自动下载的本地兜底副本），体积大不入库
+bin/.restic-local
+
 # 保留目录结构但不保留占位文件之外的内容
 !.gitkeep
