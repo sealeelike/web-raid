@@ -21,6 +21,12 @@ path 管理:
   path remove <目录>       从备份源中移除一个目录
   path list                列出所有已配置的备份源目录
 
+执行:
+  run [--target <name>] [--force]
+                           对指定或全部已启用 target 跑一次备份，成功后自动清理旧快照
+                           （--force 供事件触发器/定时器等自动化调用时跳过去抖判断用，
+                           手动执行不需要加）
+
   help                     显示本帮助
 EOF
 }
@@ -158,6 +164,95 @@ cmd_path_list() {
 }
 
 # ===========================================================================
+# run：实际执行备份
+# ===========================================================================
+
+# 单个 target 的备份 + 清理，返回非 0 表示这个 target 失败（不中断其他 target）
+run_one_target() {
+    local name="$1" restic_bin="$2"
+    load_target "$name"
+    if [[ "$ENABLED" != "true" ]]; then
+        info "target '${name}' 已禁用，跳过"
+        return 0
+    fi
+    export_restic_env
+
+    local paths=()
+    while IFS= read -r p; do
+        [[ -n "$p" ]] && paths+=("$p")
+    done < "$PATHS_CONF"
+
+    info "[${name}] 开始备份 ${#paths[@]} 个目录 ..."
+    # 本命令已经用 flock 保证不会有第二个 backupctl run 并发执行，
+    # 所以这里可以放心无条件清理远端可能残留的 stale lock（上次运行被 kill -9/断电中断的情况）
+    "$restic_bin" unlock >/dev/null 2>&1 || true
+
+    local limit_args=()
+    [[ -n "${LIMIT_UPLOAD_KBPS:-}" ]] && limit_args=(--limit-upload "$LIMIT_UPLOAD_KBPS")
+
+    if nice -n 19 ionice -c3 "$restic_bin" backup "${paths[@]}" "${limit_args[@]}"; then
+        ok "[${name}] 备份成功"
+        log_line "run: ${name} 备份成功"
+        date '+%Y-%m-%d %H:%M:%S' > "${VAR_DIR}/last-success.${name}"
+
+        info "[${name}] 清理旧快照 (keep-last ${KEEP_LAST:-1}) ..."
+        if nice -n 19 ionice -c3 "$restic_bin" forget --keep-last "${KEEP_LAST:-1}" --prune; then
+            ok "[${name}] 快照清理完成"
+            log_line "run: ${name} forget --prune 完成"
+        else
+            warn "[${name}] forget --prune 失败（不影响本次已完成的备份，下次运行会重试）"
+            log_line "run: ${name} forget --prune 失败"
+        fi
+        return 0
+    else
+        err "[${name}] 备份失败"
+        log_line "run: ${name} 备份失败"
+        return 1
+    fi
+}
+
+cmd_run() {
+    local only_target="" force=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --target) only_target="${2:-}"; [[ -n "$only_target" ]] || die "--target 需要指定 target 名称"; shift 2 ;;
+            --force)  force=1; shift ;;
+            *) die "未知参数: $1" ;;
+        esac
+    done
+    # --force 目前只是预留给模块 5/6 的自动触发脚本用来跳过外部去抖判断，
+    # run 本身不做任何"要不要跑"的前置判断，调不调用这条命令由触发脚本自己决定
+    : "$force"
+
+    local lockfile="${VAR_DIR}/backup.lock"
+    exec 200>"$lockfile"
+    if ! flock -n 200; then
+        info "已有 backupctl run 正在执行，本次跳过"
+        return 0
+    fi
+
+    local names
+    if [[ -n "$only_target" ]]; then
+        [[ -f "${TARGETS_DIR}/${only_target}.env" ]] || die "target 不存在: ${only_target}"
+        names="$only_target"
+    else
+        names="$(list_targets)"
+    fi
+    [[ -n "$names" ]] || { warn "没有配置任何备份目标，先用 'backupctl target add' 添加"; return 0; }
+    [[ -s "$PATHS_CONF" ]] || { warn "没有配置任何备份源目录，先用 'backupctl path add' 添加"; return 0; }
+
+    local restic_bin
+    restic_bin="$(resolve_restic)"
+
+    local overall_failed=0
+    while IFS= read -r name; do
+        run_one_target "$name" "$restic_bin" || overall_failed=1
+    done <<< "$names"
+
+    [[ $overall_failed -eq 0 ]] || return 1
+}
+
+# ===========================================================================
 # 分发
 # ===========================================================================
 main() {
@@ -182,6 +277,7 @@ main() {
                 *) die "未知子命令: path ${sub}（可用: add/remove/list）" ;;
             esac
             ;;
+        run) cmd_run "$@" ;;
         help|-h|--help) usage ;;
         *) usage; [[ "$cmd" == "help" ]] || exit 1 ;;
     esac

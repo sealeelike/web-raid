@@ -33,6 +33,12 @@
 - 端到端验证：针对真实测试 VPS，`target add` 粘贴凭据 → `restic init` → `restic backup` → `restic snapshots` 全部跑通；`target remove`、`path add/remove/list`（含删除最后一条记录的边界场景）均复测通过
 - 详见 `doc/03-backupctl-skeleton.md`
 
+## 2026-07-04 — Module 4: backupctl run（实际备份执行）
+
+- 新增 `run_one_target()` + `cmd_run()`：多 target 遍历、`nice -n 19 ionice -c3` 低优先级限速执行、`flock` 防并发（fd 跟随进程生命周期自动释放）、无条件 `restic unlock` 清理 stale lock、成功后自动 `forget --keep-last <N> --prune`
+- 端到端验证（针对真实测试 VPS）：正常备份→prune 循环确认 keep-last 生效；**关键场景**——用 80MB 测试文件制造几十秒的备份窗口，`kill -9` 整个 run 进程模拟断电中断，确认 `flock` 自动释放、远端确实留下 stale lock、重跑后 `restic unlock` 自动清理且备份/prune 正常完成，不需要人工介入；并发跳过逻辑（第二次 run 检测到锁占用后正确跳过）也一并验证
+- 详见 `doc/04-backupctl-run.md`
+
 ## 下一步
 
-Module 4: `backupctl run`（实际备份执行：多 target 遍历、nice/ionice 限速、flock 防并发、成功后 forget --prune）
+Module 5: 事件触发 `backup-watcher.service`（inotifywait -r -m + 静默去抖，默认 10 分钟）
