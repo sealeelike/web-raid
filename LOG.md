@@ -91,8 +91,14 @@
 - **追加对抗性验证**（用户追问"A 用户有可能渗透进入 B 的空间吗？"）：查证 `rest-server` 历史上有两次真实的 `--private-repos` 目录穿越漏洞（分别修复于 0.10.0 和 0.11.0），先确认一键脚本永远拉 GitHub `releases/latest`（当前 v0.14.0，远晚于两个修复版本），再实际起一个真实数据的测试实例，用 `deviceA` 凭据尝试了未编码穿越、`%2F`/`%252F` 编码穿越、`curl --path-as-is` 触发的重定向后跟随、跨用户 `DELETE`、构造包含 `/` 的畸形用户名等全部历史已知手法访问/破坏 `deviceC` 的真实数据——全部被正确拒绝（401），`deviceC` 数据全程完好。同时明确这只回答了"应用层鉴权能否被绕过"，不能替代"VPS root 被攻破后数据还安不安全"这个更大的问题
 - 详见 `doc/08-multi-device-same-vps.md`
 
+## 2026-07-04 — Module 9: VPS 侧每日归档与保留策略清理
+
+- 新增 `backup-server-setup/install-archiver.sh`（独立一键脚本，VPS 上 root 执行，与 `setup-backup-server-hardened.sh` 风格一致）：给已有 `rest-server` 追加"每日归档 + 按份数淘汰"层——`rsync --link-dest` 硬链接归档到独立目录（默认 `/srv/backup-archive`，root 专属 700 权限，`restic-rest-server` 服务账户零权限），按份数（默认 7）淘汰最老归档而非按日期，用户确认先做固定滚动窗口这一种模式（原计划提到的祖父-父亲-儿子式阶梯保留留作以后可选扩展）
+- **真实 bug 及修复**：实测中发现"归档一创建就立刻 `chattr +i`"会导致下一轮 `rsync --link-dest` 完全无法硬链接（`chattr(1)`：immutable 文件不能被 `link()`），归档悄悄退化成每天全量复制，破坏了"未变化内容零存储成本"这条核心设计。修复为"只锁上一份，永远留最新一份可写"，重新测试确认硬链接（inode 相同、链接数为 2）和 chattr 保护（`lsattr` 确认较旧归档已锁、最新一份未锁）同时生效
+- 端到端验证（真实测试 VPS，临时实例，端口 9194）：真实数据连续 4 轮归档确认硬链接去重生效、按份数正确淘汰（`KEEP_COUNT=2`）；`su` 到 `restic-rest-server` 账户确认对归档目录零权限；把归档整体拉回本机用 `restic snapshots`/`restore` 实际验证可恢复、恢复内容与原始文件逐字节一致；淘汰逻辑代码走查确认没有任何日期/`mtime` 判断，"长期不产生新归档不会误删历史"是结构性保证
+- 测试完毕本地配置和 VPS 临时实例（rest-server + archiver 两部分）均已完全清理
+- 详见 `doc/09-archive-and-prune.md`
+
 ## 下一步
 
-模块编号顺延：原计划的"VPS 侧每日归档"改为 Module 9，"端到端校验"改为 Module 10。
-
-Module 9: VPS 侧每日归档与保留策略清理（`archive-and-prune.sh`，按份数淘汰而非按日期）
+Module 10: 端到端总校验（对照原始设计的完整"校验计划"逐条走一遍）
